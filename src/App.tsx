@@ -832,8 +832,8 @@ function App() {
               <img src={rafilisLogo} alt="Rafilis Logo" width="32" height="32" />
             </div>
             <div className="brand-text">
-              <h1 className="brand-title">Rafilis AN</h1>
-              <p className="brand-subtitle">Audio Normalizer</p>
+              <h1 className="brand-title">Rafilis AN v2.1.1</h1>
+              <p className="brand-subtitle">Audio Normalizer - Auto-Update Ready</p>
             </div>
           </div>
           <div className="header-status">
