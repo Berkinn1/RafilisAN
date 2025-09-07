@@ -1,0 +1,145 @@
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+import './App.css';
+
+interface BackendStatus {
+  status: string;
+  isProcessing: boolean;
+  progress: number;
+}
+
+function App() {
+  const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
+  const [isPolling, setIsPolling] = useState<boolean>(false);
+  const [pollCount, setPollCount] = useState<number>(0);
+  
+  // Our suspect: polling timeout ref
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // MINIMAL POLLING IMPLEMENTATION - testing the exact logic
+  const pollForUpdates = async () => {
+    try {
+      console.log(`Poll #${pollCount + 1} - Memory test`);
+      setPollCount(prev => prev + 1);
+      
+      // This is the network call that might be leaking
+      const response = await axios.get('http://localhost:8080/api/status');
+      setBackendStatus(response.data);
+      
+      // The original polling logic that might leak:
+      if (isPolling) {
+        // Clear any existing timeout before setting new one (our fix)
+        if (pollingTimeoutRef.current) {
+          clearTimeout(pollingTimeoutRef.current);
+        }
+        pollingTimeoutRef.current = setTimeout(pollForUpdates, 250);
+      }
+      
+    } catch (error) {
+      console.error('Poll failed:', error);
+      // Error retry logic (also suspect)
+      if (isPolling) {
+        if (pollingTimeoutRef.current) {
+          clearTimeout(pollingTimeoutRef.current);
+        }
+        pollingTimeoutRef.current = setTimeout(pollForUpdates, 1000);
+      }
+    }
+  };
+
+  // Start/Stop polling
+  const togglePolling = () => {
+    if (isPolling) {
+      console.log('🛑 Stopping polling');
+      setIsPolling(false);
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+    } else {
+      console.log('▶️ Starting polling');
+      setIsPolling(true);
+      setPollCount(0);
+      pollForUpdates(); // Start first poll
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Cleanup: Stopping all polling');
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <div className="app">
+      <div className="container">
+        <h1>Memory Test: POLLING LOGIC</h1>
+        <p>Testing if polling setTimeout chains cause memory leak</p>
+        
+        <div className="stats-container">
+          <div className="stat-item">
+            <div className="stat-label">Polling Status</div>
+            <div className="stat-number">{isPolling ? 'ACTIVE' : 'STOPPED'}</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-label">Poll Count</div>
+            <div className="stat-number">{pollCount}</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-label">Backend Status</div>
+            <div className="stat-number">{backendStatus?.status || 'None'}</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-label">Backend Processing</div>
+            <div className="stat-number">{backendStatus?.isProcessing ? 'Yes' : 'No'}</div>
+          </div>
+        </div>
+
+        <div className="controls">
+          <button 
+            onClick={togglePolling}
+            style={{ 
+              backgroundColor: isPolling ? '#dc3545' : '#28a745',
+              color: 'white',
+              padding: '10px 20px',
+              fontSize: '16px'
+            }}
+          >
+            {isPolling ? '🛑 Stop Polling' : '▶️ Start Polling'}
+          </button>
+          
+          <button onClick={() => {
+            setPollCount(0);
+            setBackendStatus(null);
+          }}>
+            Reset Stats
+          </button>
+        </div>
+
+        <div className="polling-info">
+          <h3>Polling Details:</h3>
+          <ul>
+            <li>Interval: 250ms (every 0.25 seconds)</li>
+            <li>Endpoint: http://localhost:8080/api/status</li>
+            <li>Error retry: 1000ms</li>
+            <li>Cleanup: {pollingTimeoutRef.current ? 'Active timeout' : 'No timeout'}</li>
+          </ul>
+          
+          {backendStatus && (
+            <div>
+              <h4>Last Response:</h4>
+              <pre>{JSON.stringify(backendStatus, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
